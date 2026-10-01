@@ -315,10 +315,12 @@
         for (var y = 1; y <= N; y++) {
             var idx = Math.pow(1 + num(state.run.uplift) / 100, y - 1);
             var licenses = c.licensesAnnual * idx;
-            var ops = (num(state.run.adminFte) * num(state.labor.salary) * 12 * rate() + (num(state.run.partnerSupport) + num(state.run.other)) * rate()) * riskCost;
+            var partner = num(state.run.partnerSupport) * rate() * riskCost;
+            var internal = (num(state.run.adminFte) * num(state.labor.salary) * 12 + num(state.run.other)) * rate() * riskCost;
+            var ops = partner + internal;
             var cost = licenses + ops;
             var ben = fullBenefit * adoption(y);
-            years.push({ y: y, licenses: licenses, ops: ops, cost: cost, benefit: ben, adoption: adoption(y), net: ben - cost });
+            years.push({ y: y, licenses: licenses, partner: partner, internal: internal, ops: ops, cost: cost, benefit: ben, adoption: adoption(y), net: ben - cost });
         }
 
         var r = num(f.discount) / 100;
@@ -397,9 +399,11 @@
             select('fin.horizon', [[3, '3 роки (стандартний контракт)'], [5, '5 років']], 'Горизонт аналізу') +
             '<div class="rc-fx">Курс НБУ: 1 USD = <b id="rcFx">' + PRICING.fx.uah.toFixed(2).replace('.', ',') + ' ₴</b><br><span id="rcFxDate">на ' + PRICING.fxDate + '</span></div>' +
             '</div>';
+        var toolbar = html;
+        html = '';
 
-        // 1. Платформа
-        html += '<section class="rc-card"><h2><i>1</i>Платформа Creatio</h2><div class="rc-plans">' +
+        // 4. Платформа
+        html += '<section class="rc-card"><h2><i>4</i>Платформа Creatio</h2><div class="rc-plans">' +
             ['growth', 'enterprise', 'unlimited'].map(function (id) {
                 var p = PRICING.plans[id];
                 return '<label class="rc-plan' + (plan === id ? ' is-on' : '') + '"><input type="radio" name="rcPlan" data-bind="plan" value="' + id + '"' + (plan === id ? ' checked' : '') + '>' +
@@ -415,7 +419,7 @@
 
         // 2. CRM-продукти
         var prodNames = { sales: ['Sales', 'Агентна платформа продажів: ліди, угоди, прогнози, договори'], marketing: ['Marketing', 'Сегментація, омніканальні кампанії, lead-to-revenue'], service: ['Service', 'Звернення, SLA, черги, бази знань, омніканальність'] };
-        html += '<section class="rc-card"><h2><i>2</i>CRM-продукти</h2>' + (plan === 'unlimited' ? '<p class="rc-note rc-ok">У тарифі Unlimited продукти Sales, Marketing і Service уже включені.</p>' : '') + '<div class="rc-list">' +
+        html += '<section class="rc-card"><h2><i>5</i>CRM-продукти</h2>' + (plan === 'unlimited' ? '<p class="rc-note rc-ok">У тарифі Unlimited продукти Sales, Marketing і Service уже включені.</p>' : '') + '<div class="rc-list">' +
             Object.keys(prodNames).map(function (id) {
                 var p = state.products[id];
                 return '<div class="rc-item' + (p.on ? ' is-on' : '') + '">' +
@@ -428,7 +432,7 @@
             }).join('') + '</div></section>';
 
         // 3. Додаткові користувачі
-        html += '<section class="rc-card"><h2><i>3</i>Додаткові типи користувачів і портали</h2>';
+        html += '<section class="rc-card"><h2><i>6</i>Додаткові типи користувачів і портали</h2>';
         if (plan === 'growth') {
             html += '<p class="rc-note rc-warn">Додаткові типи користувачів доступні лише в тарифах Enterprise та Unlimited.</p>';
         } else {
@@ -444,14 +448,14 @@
 
         // 4. AI та підтримка
         var ai = PRICING.ai[state.ai.pkg];
-        html += '<section class="rc-card"><h2><i>4</i>AI-пакети та підтримка</h2><div class="rc-grid">' +
+        html += '<section class="rc-card"><h2><i>7</i>AI-пакети та підтримка</h2><div class="rc-grid">' +
             select('ai.pkg', Object.keys(PRICING.ai).map(function (k) { var a = PRICING.ai[k]; return [k, a.title + (a.credits ? ' — ' + (a.credits / 1e6).toString().replace('.', ',') + ' млн кредитів, ' + fmt(price(a.cost)) + '/рік' : '')]; }), 'AI-пакет (річний)') +
             (ai && ai.block ? field('Додаткові блоки по 500K кредитів · ' + fmt(price(ai.block)) + '/рік', 'ai.blocks', { step: 1 }) : '') +
             select('support', Object.keys(PRICING.support).map(function (k) { var s = PRICING.support[k]; return [k, s.title + (s.pct ? ' — ' + s.pct + '% від підписки' : ' — включено')]; }), 'Рівень підтримки Creatio') +
             '</div>' + (ai && ai.custom ? '<p class="rc-note rc-warn">Пакет Freedom оцінюється індивідуально — зверніться до відділу продажів.</p>' : '') + '</section>';
 
         // 5. SYNTECH
-        html += '<section class="rc-card"><h2><i>5</i>Рішення SYNTECH для Creatio</h2><p class="rc-note">Ліцензії на рік, на одне середовище (якщо не вказано «за користувача»). Пакет компонентів замінює окремі компоненти, що до нього входять.</p>';
+        html += '<section class="rc-card"><h2><i>8</i>Рішення SYNTECH для Creatio</h2><p class="rc-note">Ліцензії на рік, на одне середовище (якщо не вказано «за користувача»). Пакет компонентів замінює окремі компоненти, що до нього входять.</p>';
         var bundleOn = (state.syntech.pack || {}).on;
         PRICING.syntech.forEach(function (g) {
             html += '<h3 class="rc-group">' + g.group + '</h3><div class="rc-list rc-list-compact">';
@@ -469,26 +473,19 @@
         });
         html += '</section>';
 
-        // 6. Впровадження та експлуатація
-        html += '<section class="rc-card"><h2><i>6</i>Впровадження та експлуатація</h2>' +
-            '<h3 class="rc-group">Вартість праці</h3><div class="rc-grid">' +
-            field('Повна вартість співробітника / міс', 'labor.salary', { money: true, hint: 'зарплата + податки (ЄСВ) + накладні' }) +
-            field('Робочих годин на рік', 'labor.hoursYear', { step: 10, hint: '≈1 760 год' }) +
-            '</div><h3 class="rc-group">Одноразові витрати (рік 0)</h3><div class="rc-grid">' +
-            field('Послуги партнера з впровадження', 'impl.partner', { money: true, hint: 'аналіз, налаштування, інтеграції, міграція даних' }) +
-            field('Години внутрішньої команди', 'impl.internalHours', { step: 10, hint: 'ключові користувачі, ІТ, керівник проєкту' }) +
-            field('Навчання, год на користувача', 'impl.trainingHours', { step: 1 }) +
-            field('Тривалість впровадження, міс', 'impl.goLive', { min: 0, max: 12, step: 1, hint: 'вигоди починаються після запуску' }) +
-            '</div><h3 class="rc-group">Щорічні витрати</h3><div class="rc-grid">' +
-            field('Адміністратор системи, FTE', 'run.adminFte', { step: 0.05, hint: '0,25 = чверть ставки' }) +
-            field('Супровід і розвиток партнером / рік', 'run.partnerSupport', { money: true }) +
-            field('Інші витрати / рік', 'run.other', { money: true, hint: 'інтеграції, телефонія, SMS-тарифи' }) +
-            field('Щорічна індексація ліцензій', 'run.uplift', { suffix: '%', step: 0.5 }) +
+        var licenses = html;
+
+        // ---------- ЧАСТИНА 1: дані компанії-клієнта ----------
+        // 1. Персонал і фінанси
+        var client1 = '<section class="rc-card"><h2><i>1</i>Персонал і фінанси компанії</h2><div class="rc-grid">' +
+            field('Повна вартість співробітника / міс', 'labor.salary', { money: true, hint: 'середня по компанії: зарплата + ЄСВ + накладні' }) +
+            field('Робочих годин на рік', 'labor.hoursYear', { step: 10, hint: '≈1 760 год на ставку' }) +
+            field('Ставка дисконтування', 'fin.discount', { suffix: '%', step: 0.5, hint: 'вартість капіталу (WACC); типово 10%' }) +
             '</div></section>';
 
-        // 7. Вигоди
+        // 2. Бізнес-ефекти
         var b = state.ben;
-        html += '<section class="rc-card"><h2><i>7</i>Бізнес-ефекти</h2><p class="rc-note">Вмикайте лише ті ефекти, які можна підтвердити даними компанії. Значення за замовчуванням — консервативні галузеві орієнтири.</p>' +
+        var client2 = '<section class="rc-card"><h2><i>2</i>Бізнес-ефекти</h2><p class="rc-note">Вмикайте лише ті ефекти, які можна підтвердити даними компанії. Підставте показники своєї компанії; значення за замовчуванням — консервативні галузеві орієнтири.</p>' +
             benefitBlock('sales', 'Продуктивність продажів', field('Менеджерів з продажу', 'ben.sales.sellers', { step: 1 }) + field('Годин рутини на тиждень', 'ben.sales.hours', { step: 0.5, hint: 'звіти, введення даних, пошук інформації' }) + field('Скорочення рутини', 'ben.sales.reduction', { suffix: '%', max: 100, hint: 'типово 20–40%' })) +
             benefitBlock('revenue', 'Зростання виручки (win rate)', field('Нових угод (opportunities) / міс', 'ben.revenue.opps', { step: 1 }) + field('Поточний win rate', 'ben.revenue.winRate', { suffix: '%', max: 100 }) + field('Середній чек', 'ben.revenue.deal', { money: true }) + field('Відносне зростання win rate', 'ben.revenue.uplift', { suffix: '%', hint: 'типово 5–15%: 20% → 22% = +10%' }) + field('Валова маржа', 'ben.revenue.margin', { suffix: '%', max: 100, hint: 'вигода = прибуток, а не виручка' })) +
             benefitBlock('retention', 'Утримання клієнтів', field('Річна виручка від наявних клієнтів', 'ben.retention.base', { money: true }) + field('Поточний відтік', 'ben.retention.churn', { suffix: '%', max: 100 }) + field('Зниження відтоку, п.п.', 'ben.retention.reduction', { step: 0.5, hint: 'маржа — з блоку виручки' })) +
@@ -497,9 +494,27 @@
             benefitBlock('legacy', 'Заміна legacy-систем', field('Витрати на старі системи / рік', 'ben.legacy.annual', { money: true, hint: 'ліцензії, хостинг, підтримка, Excel-обвʼязка' })) +
             '</section>';
 
-        // 8. Фінансові параметри
-        html += '<section class="rc-card"><h2><i>8</i>Параметри методики</h2><div class="rc-grid">' +
-            field('Ставка дисконтування', 'fin.discount', { suffix: '%', step: 0.5, hint: 'WACC компанії; TEI типово 10%' }) +
+        // 3. Внутрішні ресурси
+        var client3 = '<section class="rc-card"><h2><i>3</i>Внутрішні ресурси компанії</h2>' +
+            '<h3 class="rc-group">Під час впровадження (рік 0)</h3><div class="rc-grid">' +
+            field('Години внутрішньої команди', 'impl.internalHours', { step: 10, hint: 'ключові користувачі, ІТ, керівник проєкту' }) +
+            field('Навчання, год на користувача', 'impl.trainingHours', { step: 1 }) +
+            '</div><h3 class="rc-group">Щороку</h3><div class="rc-grid">' +
+            field('Адміністратор системи, FTE', 'run.adminFte', { step: 0.05, hint: '0,25 = чверть ставки' }) +
+            field('Інші власні витрати / рік', 'run.other', { money: true, hint: 'телефонія, SMS-тарифи, Google Workspace' }) +
+            '</div></section>';
+
+        // ---------- ЧАСТИНА 2: рішення та пропозиція інтегратора ----------
+        // 9. Послуги інтегратора
+        var integ9 = '<section class="rc-card"><h2><i>9</i>Послуги інтегратора</h2><div class="rc-grid">' +
+            field('Впровадження (разово)', 'impl.partner', { money: true, hint: 'аналіз, налаштування, інтеграції, міграція даних' }) +
+            field('Тривалість впровадження, міс', 'impl.goLive', { min: 0, max: 12, step: 1, hint: 'вигоди починаються після запуску' }) +
+            field('Супровід і розвиток / рік', 'run.partnerSupport', { money: true }) +
+            field('Щорічна індексація ліцензій', 'run.uplift', { suffix: '%', step: 0.5 }) +
+            '</div></section>';
+
+        // 10. Припущення методики
+        var integ10 = '<section class="rc-card"><h2><i>10</i>Припущення методики</h2><div class="rc-grid">' +
             field('Монетизація зекономленого часу', 'fin.capture', { suffix: '%', max: 100, hint: 'частка часу, що стає продуктивною роботою (TEI ~50%)' }) +
             field('Ризик-коригування вигод', 'fin.riskBen', { suffix: '%', max: 90, hint: 'зменшує вигоди на невизначеність' }) +
             field('Ризик-коригування витрат', 'fin.riskCost', { suffix: '%', hint: 'резерв на перевищення бюджету' }) +
@@ -507,7 +522,17 @@
             field('Адаптація в 2-й рік', 'fin.adoptY2', { suffix: '%', max: 100, hint: 'з 3-го року — 100%' }) +
             '</div></section>';
 
+        html = toolbar +
+            part('client', 'Частина 1 · заповнює клієнт', 'Дані вашої компанії', 'Персонал, бізнес-показники та власні ресурси, які компанія виділяє на проєкт.') +
+            client1 + client2 + client3 +
+            part('integrator', 'Частина 2 · заповнює інтегратор', 'Рішення та пропозиція SYNTECH', 'Ліцензії Creatio і SYNTECH, послуги впровадження й супроводу, припущення методики.') +
+            licenses + integ9 + integ10;
+
         root.querySelector('#rcForm').innerHTML = html;
+    }
+
+    function part(kind, eyebrow, title, text) {
+        return '<div class="rc-part rc-part-' + kind + '"><span class="rc-part-tag">' + eyebrow + '</span><h2>' + title + '</h2><p>' + text + '</p></div>';
     }
 
     function benefitBlock(id, title, fields) {
@@ -538,11 +563,11 @@
         // Таблиця TEI
         html += '<div class="rc-panel"><h3>Грошові потоки (ризик-скориговані)</h3><div class="rc-table-wrap"><table class="rc-table"><thead><tr><th></th><th>Рік 0</th>' +
             M.years.map(function (Y) { return '<th>Рік ' + Y.y + '</th>'; }).join('') + '<th>Разом</th><th>PV</th></tr></thead><tbody>';
-        var pvLic = 0, pvOps = 0, pvB = 0, r = num(state.fin.discount) / 100;
-        M.years.forEach(function (Y) { var d = Math.pow(1 + r, Y.y); pvLic += Y.licenses / d; pvOps += Y.ops / d; pvB += Y.benefit / d; });
-        html += row('Ліцензії', 0, M.years.map(function (Y) { return Y.licenses; }), pvLic, 'neg');
-        html += row('Впровадження й навчання', M.initial, M.years.map(function () { return 0; }), M.initial, 'neg');
-        html += row('Експлуатація', 0, M.years.map(function (Y) { return Y.ops; }), pvOps, 'neg');
+        var pvLic = 0, pvPartner = M.initParts.partner, pvInternal = M.initParts.internal + M.initParts.training, pvB = 0, r = num(state.fin.discount) / 100;
+        M.years.forEach(function (Y) { var d = Math.pow(1 + r, Y.y); pvLic += Y.licenses / d; pvPartner += Y.partner / d; pvInternal += Y.internal / d; pvB += Y.benefit / d; });
+        html += row('Ліцензії Creatio і SYNTECH', 0, M.years.map(function (Y) { return Y.licenses; }), pvLic, 'neg');
+        html += row('Послуги інтегратора', M.initParts.partner, M.years.map(function (Y) { return Y.partner; }), pvPartner, 'neg');
+        html += row('Внутрішні витрати компанії', M.initParts.internal + M.initParts.training, M.years.map(function (Y) { return Y.internal; }), pvInternal, 'neg');
         html += row('<b>Усього витрат</b>', M.initial, M.years.map(function (Y) { return Y.cost; }), M.pvCost, 'neg strong');
         html += row('<b>Вигоди</b>', 0, M.years.map(function (Y) { return Y.benefit; }), pvB, 'pos strong');
         html += row('<b>Чистий потік</b>', -M.initial, M.years.map(function (Y) { return Y.net; }), M.npv, 'net strong');
@@ -552,7 +577,7 @@
         // Вигоди
         var maxB = Math.max.apply(null, M.benefits.map(function (x) { return x.value; }).concat([1]));
         html += '<div class="rc-panel"><h3>Вигоди на рік при повній адаптації</h3>';
-        if (!M.benefits.length) html += '<p class="rc-note">Увімкніть хоча б один бізнес-ефект у розділі 7.</p>';
+        if (!M.benefits.length) html += '<p class="rc-note">Увімкніть хоча б один бізнес-ефект у розділі 2.</p>';
         M.benefits.forEach(function (x) {
             var v = x.value * M.riskBen;
             html += '<div class="rc-bar"><div class="rc-bar-label"><span>' + x.title + '<small>' + x.hint + '</small></span><b>' + fmt(v) + '</b></div><div class="rc-bar-track"><div class="rc-bar-fill" style="width:' + (x.value / maxB * 100).toFixed(1) + '%"></div></div></div>';
