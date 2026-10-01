@@ -350,7 +350,8 @@
             initial: initial, initParts: { partner: initPartner, internal: initInternal, training: initTraining },
             years: years, pvCost: pvCost, pvBen: pvBen, npv: npv, roi: roi, irr: irr(flows),
             payback: payback, curve: curve, totalCost: totalCost, totalBen: totalBen, N: N, goLive: goLive,
-            perUserMonth: c.users > 0 ? totalCost / N / 12 / (internalUsers || 1) : 0
+            perUserMonth: c.users > 0 ? totalCost / N / 12 / (internalUsers || 1) : 0,
+            hourly: h, internalUsers: internalUsers, riskCostK: riskCost, discount: r
         };
     }
 
@@ -602,9 +603,89 @@
                 return '<tr' + (k === 1 ? ' class="rc-base"' : '') + '><td>' + Math.round(k * 100) + '%' + (k === 1 ? ' (базовий)' : '') + '</td><td class="' + (S.roi >= 0 ? 'pos' : 'neg') + '">' + pct(S.roi) + '</td><td class="' + (S.npv >= 0 ? 'pos' : 'neg') + '">' + fmtShort(S.npv) + '</td><td>' + (S.payback === null ? '> ' + S.N * 12 + ' міс' : S.payback + ' міс') + '</td></tr>';
             }).join('') + '</tbody></table></div>';
 
+        html += explain(M);
+
         html += '<div class="rc-actions"><button type="button" class="rc-btn" data-action="print">Зберегти PDF / друк</button><button type="button" class="rc-btn rc-btn-ghost" data-action="reset">Скинути</button></div>';
 
         el.innerHTML = html;
+    }
+
+
+    // ==================== РОЗШИФРОВКА ПОКАЗНИКІВ ====================
+    var explainOpen = false;
+    function n0(v, d) { return Number(v).toLocaleString('uk-UA', { maximumFractionDigits: d == null ? 0 : d }); }
+    function xItem(title, text, formula) {
+        return '<div class="rc-x"><div class="rc-x-title">' + title + '</div><p>' + text + '</p>' + (formula ? '<div class="rc-x-formula">' + formula + '</div>' : '') + '</div>';
+    }
+
+    function explain(M) {
+        var b = state.ben, f = state.fin, h = M.hourly, cap = num(f.capture), risk = num(f.riskBen);
+        var html = '<details class="rc-panel rc-explain"' + (explainOpen ? ' open' : '') + '><summary>Розшифровка показників</summary><div class="rc-x-body">';
+
+        // Базові величини
+        html += '<h4>Базові величини</h4>';
+        html += xItem('Погодинна вартість співробітника', 'Повна місячна вартість співробітника, перерахована на одну робочу годину. Через неї в гроші переводиться зекономлений час і години внутрішньої команди.',
+            fmt(num(state.labor.salary) * rate()) + ' × 12 міс ÷ ' + n0(state.labor.hoursYear) + ' год = <b>' + fmt(h, { exact: true }) + ' / год</b>');
+        html += xItem('Монетизація часу', 'Не весь вивільнений час стає продуктивною роботою. До грошей зараховується лише ця частка (у TEI типово 50%).', '<b>' + cap + '%</b> зекономлених годин');
+
+        // Вигоди
+        html += '<h4>Вигоди на рік при повній адаптації</h4>';
+        if (b.sales.on) html += xItem('Продуктивність продажів', 'Менеджери витрачають менше часу на звіти, введення даних і пошук інформації.',
+            n0(b.sales.sellers) + ' менеджерів × ' + n0(b.sales.hours, 1) + ' год/тиж × ' + DAY_WEEKS + ' тижнів × ' + b.sales.reduction + '% скорочення × ' + fmt(h, { exact: true }) + ' × ' + cap + '% = <b>' + fmt(val('sales')) + '</b>');
+        if (b.revenue.on) html += xItem('Додатковий валовий прибуток', 'CRM підвищує частку виграних угод. Враховується прибуток (валова маржа), а не оборот.',
+            n0(b.revenue.opps) + ' угод/міс × 12 × ' + b.revenue.winRate + '% win rate × ' + b.revenue.uplift + '% зростання × ' + fmt(num(b.revenue.deal) * rate()) + ' чек × ' + b.revenue.margin + '% маржа = <b>' + fmt(val('revenue')) + '</b>' +
+            '<small>Додатково виграних угод на рік: ' + n0(num(b.revenue.opps) * 12 * num(b.revenue.winRate) / 100 * num(b.revenue.uplift) / 100, 1) + '</small>');
+        if (b.retention.on) html += xItem('Утримання клієнтів', 'Менший відтік зберігає частину виручки від наявних клієнтів; враховується за валовою маржею.',
+            fmt(num(b.retention.base) * rate()) + ' × ' + Math.min(num(b.retention.reduction), num(b.retention.churn)) + ' п.п. зниження відтоку × ' + b.revenue.margin + '% маржа = <b>' + fmt(val('retention')) + '</b>');
+        if (b.service.on) {
+            var defl = num(b.service.deflection), aht = num(b.service.aht);
+            html += xItem('Ефективність сервісу', 'Частина звернень вирішується без оператора (портал, AI-агенти), решта обробляється швидше.',
+                n0(b.service.cases) + ' звернень/міс × 12 × (' + defl + '% × ' + aht + ' хв + ' + (100 - defl) + '% × ' + aht + ' хв × ' + b.service.reduction + '%) ÷ 60 × ' + fmt(h, { exact: true }) + ' × ' + cap + '% = <b>' + fmt(val('service')) + '</b>');
+        }
+        if (b.automation.on) html += xItem('Автоматизація процесів', 'Ручні операції (погодження, звіти, перенесення даних) замінюються бізнес-процесами Creatio.',
+            n0(b.automation.hours) + ' год/міс × 12 × ' + b.automation.share + '% × ' + fmt(h, { exact: true }) + ' × ' + cap + '% = <b>' + fmt(val('automation')) + '</b>');
+        if (b.legacy.on) html += xItem('Заміна legacy-систем', 'Витрати на старі системи, від яких компанія відмовиться після запуску.', '<b>' + fmt(val('legacy')) + '</b> на рік');
+        html += xItem('Ризик-скориговані вигоди', 'Сума вигод зменшується на коефіцієнт невизначеності, щоб прогноз не був завищеним.',
+            fmt(M.fullBenefit / M.riskBen) + ' × (1 − ' + risk + '%) = <b>' + fmt(M.fullBenefit) + '</b> на рік');
+        html += xItem('Крива адаптації', 'Вигоди з’являються лише після запуску та наростають у міру того, як команда починає працювати в системі.',
+            'Рік 1: ' + f.adoptY1 + '% × ' + (12 - M.goLive) + ' міс після запуску з 12 = <b>' + pct(M.years[0].adoption * 100) + '</b>; рік 2: <b>' + f.adoptY2 + '%</b>; з 3-го року: <b>100%</b>');
+
+        // Витрати
+        var p = M.initParts, rc = Math.round((M.riskCostK - 1) * 100);
+        var k = M.riskCostK.toFixed(2).replace('.', ',');
+        html += '<h4>Витрати</h4>';
+        html += xItem('Ліцензії на рік', 'Підписка Creatio (платформа, продукти, користувачі, AI, підтримка) та рішення SYNTECH за прайсом. Щороку індексується на ' + state.run.uplift + '%.',
+            'Creatio ' + fmt(M.costs.creatioAnnual) + ' + SYNTECH ' + fmt(M.costs.syntechAnnual) + ' = <b>' + fmt(M.costs.licensesAnnual) + '</b> у 1-й рік');
+        html += xItem('Початкові витрати (рік 0)', 'Послуги інтегратора з впровадження, години внутрішньої команди та навчання користувачів. Збільшуються на резерв ризику ' + rc + '%.',
+            'Інтегратор ' + fmt(num(state.impl.partner) * rate()) + ' × ' + k + ' = ' + fmt(p.partner) +
+            ' + команда ' + n0(state.impl.internalHours) + ' год × ' + fmt(h, { exact: true }) + ' × ' + k + ' = ' + fmt(p.internal) +
+            ' + навчання ' + n0(state.impl.trainingHours) + ' год × ' + n0(M.internalUsers) + ' корист. × ' + fmt(h, { exact: true }) + ' × ' + k + ' = ' + fmt(p.training) + ' → <b>' + fmt(M.initial) + '</b>');
+        html += xItem('Щорічна експлуатація', 'Супровід інтегратора, адміністратор системи та інші власні витрати компанії.',
+            'Інтегратор ' + fmt(M.years[0].partner) + ' + власні ' + fmt(M.years[0].internal) + ' (адміністратор ' + n0(state.run.adminFte, 2) + ' FTE + інші) = <b>' + fmt(M.years[0].ops) + '</b> на рік');
+        html += xItem('TCO — повна вартість володіння', 'Усі витрати за горизонт аналізу без дисконтування: рік 0 плюс ліцензії й експлуатація за кожен рік.',
+            '<b>' + fmt(M.totalCost) + '</b> за ' + M.N + ' р. · на користувача: ' + fmt(M.totalCost) + ' ÷ ' + M.N + ' р. ÷ 12 ÷ ' + n0(M.internalUsers) + ' = <b>' + fmt(M.perUserMonth) + ' / міс</b>');
+
+        // Фінансові показники
+        var rr = num(f.discount);
+        html += '<h4>Фінансові показники</h4>';
+        html += xItem('PV — приведена вартість', 'Гроші майбутніх років коштують менше, ніж сьогодні. Кожен рік дисконтується за ставкою ' + rr + '%: потік року t ділиться на (1 + ' + rr + '%)ᵗ.',
+            'PV вигод = <b>' + fmt(M.pvBen) + '</b> · PV витрат = <b>' + fmt(M.pvCost) + '</b>');
+        html += xItem('NPV — чиста приведена вартість', 'Скільки грошей проєкт заробляє понад вкладене з урахуванням вартості грошей у часі. NPV > 0 — інвестиція вигідна.',
+            fmt(M.pvBen) + ' − ' + fmt(M.pvCost) + ' = <b>' + fmt(M.npv) + '</b>');
+        html += xItem('ROI — рентабельність інвестицій', 'Чистий результат на кожну вкладену гривню (у приведених цінах). 100% означає, що проєкт повертає вкладене і ще стільки ж зверху.',
+            fmt(M.npv) + ' ÷ ' + fmt(M.pvCost) + ' = <b>' + pct(M.roi, 1) + '</b>');
+        html += xItem('IRR — внутрішня норма дохідності', 'Ставка, за якої NPV дорівнює нулю. Якщо IRR вища за ставку дисконтування (' + rr + '%), проєкт прибутковіший за альтернативне використання капіталу.',
+            M.irr === null ? 'Не визначається: грошові потоки не змінюють знак за горизонт аналізу.' : '<b>' + pct(M.irr * 100, 1) + '</b> ' + (M.irr * 100 > rr ? '> ' : '≤ ') + rr + '%');
+        html += xItem('Окупність', 'Перший місяць від підписання контракту, коли накопичений (недисконтований) грошовий потік стає додатним — вигоди покрили всі витрати.',
+            M.payback === null ? 'За ' + M.N * 12 + ' міс накопичений потік не виходить у плюс.' : '<b>' + M.payback + ' міс</b> (впровадження ' + M.goLive + ' міс, далі вигоди щомісяця перевищують витрати)');
+        html += xItem('Аналіз чутливості', 'Перерахунок ROI, NPV та окупності, якщо реальні вигоди становитимуть 50–125% від прогнозу. Показує, наскільки стійкий бізнес-кейс.', '');
+
+        return html + '</div></details>';
+
+        function val(id) {
+            var x = M.benefits.filter(function (y) { return y.id === id; })[0];
+            return x ? x.value : 0;
+        }
     }
 
     function kpi(label, value, sub, cls) { return '<div class="rc-kpi rc-' + cls + '"><span>' + label + '</span><b>' + value + '</b><small>' + sub + '</small></div>'; }
@@ -745,6 +826,7 @@
         root.addEventListener('input', onInput);
         root.addEventListener('change', onInput);
         root.addEventListener('click', onClick);
+        root.addEventListener('toggle', function (e) { if (e.target.classList && e.target.classList.contains('rc-explain')) explainOpen = e.target.open; }, true);
         renderForm();
         renderResults();
         loadNbuRate();

@@ -262,3 +262,20 @@ html, body { margin: 0; padding: 0; overflow-x: hidden; }
     .rc-method { break-before: page; }
     .rc-panel, .rc-card { break-inside: avoid; }
 }
+
+/* Explanation of indicators */
+.rc-explain { padding: 0; }
+.rc-explain summary { cursor: pointer; list-style: none; padding: 14px; font-size: 13px; font-weight: 600; color: var(--rc-text); display: flex; align-items: center; gap: 10px; }
+.rc-explain summary::-webkit-details-marker { display: none; }
+.rc-explain summary::before { content: '+'; flex: none; width: 22px; height: 22px; border-radius: var(--rc-r-badge); display: grid; place-items: center; background: var(--rc-accent-bg); color: var(--rc-accent); font-weight: 700; }
+.rc-explain[open] summary::before { content: '−'; }
+.rc-x-body { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.rc-x-body h4 { margin: 8px 0 0; font-size: 11px; font-weight: 600; color: var(--rc-meta); padding-top: 10px; border-top: 1px solid var(--rc-divider); }
+.rc-x-body h4:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+.rc-x { background: var(--rc-panel); border: 1px solid var(--rc-divider); border-radius: var(--rc-r-chip); padding: 10px 12px; min-width: 0; }
+.rc-x-title { font-size: 12px; font-weight: 600; color: var(--rc-text); }
+.rc-x p { font-size: 11.5px; color: var(--rc-meta); margin-top: 2px; }
+.rc-x-formula { margin-top: 6px; font-family: var(--rc-mono); font-size: 11px; line-height: 1.6; color: var(--rc-body); background: #fff; border: 1px solid var(--rc-border); border-radius: var(--rc-r-chip); padding: 6px 8px; overflow-wrap: anywhere; }
+.rc-x-formula b { color: var(--rc-accent); font-weight: 500; }
+.rc-x-formula small { display: block; color: var(--rc-muted); font-family: 'Montserrat', sans-serif; font-size: 10px; margin-top: 2px; }
+@media print { .rc-explain .rc-x-body { display: flex; } }
