@@ -405,7 +405,7 @@
                 return '<label class="rc-plan' + (plan === id ? ' is-on' : '') + '"><input type="radio" name="rcPlan" data-bind="plan" value="' + id + '"' + (plan === id ? ' checked' : '') + '>' +
                     (p.badge ? '<span class="rc-badge">' + p.badge + '</span>' : '') +
                     '<b class="rc-plan-title">' + p.title + '</b><span class="rc-plan-sub">' + p.sub + '</span>' +
-                    '<div class="rc-plan-price">' + (p.custom ? '<span class="rc-price">За запитом</span>' : unitPrice(r.platform[id], '/користувач/міс')) + '</div>' +
+                    '<div class="rc-plan-price">' + (p.custom ? '<span class="rc-price rc-price-text">За запитом</span>' : unitPrice(r.platform[id], '/користувач/міс')) + '</div>' +
                     '<span class="rc-plan-text">' + p.text + '</span></label>';
             }).join('') + '</div>' +
             '<div class="rc-grid">' +
@@ -420,7 +420,7 @@
                 var p = state.products[id];
                 return '<div class="rc-item' + (p.on ? ' is-on' : '') + '">' +
                     '<div class="rc-item-head">' + toggle('products.' + id + '.on', '<b>' + prodNames[id][0] + '</b>') +
-                    '<div class="rc-item-price">' + (plan === 'unlimited' ? '<span class="rc-price">Включено</span>' : unitPrice(r.product, '/користувач/міс')) + '</div></div>' +
+                    '<div class="rc-item-price">' + (plan === 'unlimited' ? '<span class="rc-price rc-price-text">Включено</span>' : unitPrice(r.product, '/користувач/міс')) + '</div></div>' +
                     '<p class="rc-item-text">' + prodNames[id][1] + '</p>' +
                     (p.on ? '<div class="rc-grid">' + field('Користувачі продукту', 'products.' + id + '.users', { min: 1, step: 1, hint: 'не більше користувачів платформи' }) +
                         (id === 'marketing' ? field('Маркетингові контакти', 'products.marketing.contacts', { min: 1000, step: 1000, hint: 'ступінчаста шкала Creatio' }) + field('Email на контакт / міс', 'products.marketing.emails', { min: 0, step: 1, hint: '5 листів/контакт/міс включено' }) : '') + '</div>' : '') +
@@ -460,7 +460,7 @@
                 var inPack = bundleOn && PRICING.syntech[2].items[0].bundle.indexOf(it.id) >= 0;
                 html += '<div class="rc-item' + (s.on && !inPack ? ' is-on' : '') + (inPack ? ' is-muted' : '') + '"><div class="rc-item-head">' +
                     toggle('syntech.' + it.id + '.on', '<b>' + it.title + '</b>') +
-                    '<div class="rc-item-price">' + (inPack ? '<span class="rc-price">У пакеті</span>' : it.price === 0 ? '<span class="rc-price">Безкоштовно</span>' : unitPrice(it.price, it.perUser ? '/користувач/рік' : '/рік')) + '</div></div>' +
+                    '<div class="rc-item-price">' + (inPack ? '<span class="rc-price rc-price-text">У пакеті</span>' : it.price === 0 ? '<span class="rc-price rc-price-text">Безкоштовно</span>' : unitPrice(it.price, it.perUser ? '/користувач/рік' : '/рік')) + '</div></div>' +
                     (it.text ? '<p class="rc-item-text">' + it.text + '</p>' : '') +
                     (s.on && it.perUser ? '<div class="rc-grid">' + field('Користувачі', 'syntech.' + it.id + '.users', { min: it.minUsers || 1, step: 1, hint: it.minUsers ? 'мінімум ' + it.minUsers : '' }) + '</div>' : '') +
                     '</div>';
@@ -608,7 +608,7 @@
         var line = pts.map(function (p, i) { return (i ? 'L' : 'M') + x(p.m).toFixed(1) + ' ' + y(p.v).toFixed(1); }).join(' ');
         var area = line + ' L' + x(n) + ' ' + y(0) + ' L' + x(0) + ' ' + y(0) + ' Z';
         var svg = '<svg class="rc-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Кумулятивний грошовий потік по місяцях">' +
-            '<defs><linearGradient id="rcArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--rc-accent)" stop-opacity=".35"/><stop offset="1" stop-color="var(--rc-accent)" stop-opacity="0"/></linearGradient></defs>';
+            '<defs><linearGradient id="rcArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--rc-accent)" stop-opacity=".16"/><stop offset="1" stop-color="var(--rc-accent)" stop-opacity="0"/></linearGradient></defs>';
         [max, (max + min) / 2, min].forEach(function (v) { svg += '<line x1="' + P.l + '" x2="' + (W - P.r) + '" y1="' + y(v) + '" y2="' + y(v) + '" class="rc-grid-line"/><text x="' + (P.l - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end" class="rc-axis">' + fmtShort(v) + '</text>'; });
         for (var yr = 1; yr <= M.N; yr++) svg += '<line x1="' + x(yr * 12) + '" x2="' + x(yr * 12) + '" y1="' + P.t + '" y2="' + (H - P.b) + '" class="rc-grid-line"/><text x="' + x(yr * 12 - 6) + '" y="' + (H - 8) + '" text-anchor="middle" class="rc-axis">Рік ' + yr + '</text>';
         svg += '<line x1="' + P.l + '" x2="' + (W - P.r) + '" y1="' + y(0) + '" y2="' + y(0) + '" class="rc-zero"/>';
