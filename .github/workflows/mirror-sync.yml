@@ -1,0 +1,86 @@
+# Two-way mirror: syntechcompany/<repo> <-> SYNTECHUA/<repo>.
+# Managed by SYNTECHUA/repo-mirror — this file is overwritten from there, edit it in that repo.
+name: mirror-sync
+
+on:
+  push:
+    branches: ['**']
+    tags: ['**']
+  delete:
+  workflow_dispatch:
+
+concurrency:
+  group: mirror-sync-${{ github.event_name == 'delete' && github.event.ref || github.ref_name }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Propagate the change to the twin repository
+        env:
+          TOKEN: ${{ secrets.MIRROR_TOKEN }}
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.event.ref_type }}
+          SHORT_REF: ${{ github.event.ref }}
+          FORCED: ${{ github.event.forced }}
+          BEFORE: ${{ github.event.before }}
+          DELETED: ${{ github.event.deleted }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN:-}" ]; then echo "::warning::secret MIRROR_TOKEN is not set, nothing synced"; exit 0; fi
+          case "$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')" in
+            syntechcompany) TWIN=SYNTECHUA ;;
+            syntechua)      TWIN=syntechcompany ;;
+            *) echo "owner $GITHUB_REPOSITORY_OWNER is not mirrored"; exit 0 ;;
+          esac
+          NAME="${GITHUB_REPOSITORY#*/}"
+          SRC="https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          DST="https://x-access-token:${TOKEN}@github.com/${TWIN}/${NAME}.git"
+          echo "twin: ${TWIN}/${NAME}"
+          git init -q --bare "$RUNNER_TEMP/m.git" && cd "$RUNNER_TEMP/m.git"
+
+          tip() { git ls-remote "$1" "$2" | awk -v r="$2" '$2==r{print $1}'; }
+
+          delete_ref() {   # the ref is gone here: remove it on the twin unless it was recreated
+            local ref=$1
+            if [ -n "$(tip "$SRC" "$ref")" ]; then echo "$ref exists again, nothing to delete"; return 0; fi
+            if [ -z "$(tip "$DST" "$ref")" ]; then echo "$ref already absent on twin"; return 0; fi
+            git push -q "$DST" ":$ref" && echo "$ref deleted on twin"
+          }
+
+          sync_ref() {     # push this side's ref to the twin; never overwrite divergent work silently
+            local ref=$1 forced=${2:-false} before=${3:-} s t sc tc
+            s=$(tip "$SRC" "$ref"); t=$(tip "$DST" "$ref")
+            [ -z "$s" ] && { echo "$ref no longer exists here"; return 0; }
+            [ "$s" = "$t" ] && { echo "$ref already in sync"; return 0; }
+            git fetch -q --no-tags "$SRC" "+$ref:refs/m/src"
+            if [ -z "$t" ]; then
+              git push -q --force-with-lease="$ref:" "$DST" "refs/m/src:$ref"; echo "$ref created on twin"; return 0
+            fi
+            git fetch -q --no-tags "$DST" "+$ref:refs/m/dst"
+            sc=$(git rev-parse "refs/m/src^{commit}"); tc=$(git rev-parse "refs/m/dst^{commit}")
+            if git merge-base --is-ancestor "$tc" "$sc"; then
+              git push -q --force-with-lease="$ref:$t" "$DST" "refs/m/src:$ref"; echo "$ref fast-forwarded on twin"
+            elif git merge-base --is-ancestor "$sc" "$tc"; then
+              echo "$ref: twin is ahead, it syncs back by itself"
+            elif [ "$forced" = true ] && [ "$t" = "$before" ]; then
+              git push -q --force-with-lease="$ref:$t" "$DST" "refs/m/src:$ref"; echo "$ref force-updated on twin (force push here)"
+            else
+              echo "::error::$ref diverged between ${GITHUB_REPOSITORY} and ${TWIN}/${NAME}; merge one side into the other and push"; return 1
+            fi
+          }
+
+          case "$EVENT" in
+            delete)
+              if [ "$REF_TYPE" = tag ]; then delete_ref "refs/tags/$SHORT_REF"; else delete_ref "refs/heads/$SHORT_REF"; fi ;;
+            push)
+              if [ "$DELETED" = true ]; then delete_ref "$GITHUB_REF"; else sync_ref "$GITHUB_REF" "$FORCED" "$BEFORE"; fi ;;
+            *)
+              rc=0
+              for ref in $(git ls-remote --heads --tags "$SRC" | awk '$2 !~ /\^\{\}$/ {print $2}'); do sync_ref "$ref" || rc=1; done
+              exit $rc ;;
+          esac
