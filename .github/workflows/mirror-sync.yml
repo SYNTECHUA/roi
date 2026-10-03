@@ -29,6 +29,7 @@ jobs:
           FORCED: ${{ github.event.forced }}
           BEFORE: ${{ github.event.before }}
           DELETED: ${{ github.event.deleted }}
+          CREATED: ${{ github.event.created }}
         run: |
           set -euo pipefail
           if [ -z "${TOKEN:-}" ]; then echo "::warning::secret MIRROR_TOKEN is not set, nothing synced"; exit 0; fi
@@ -53,11 +54,16 @@ jobs:
           }
 
           sync_ref() {     # push this side's ref to the twin; never overwrite divergent work silently
-            local ref=$1 forced=${2:-false} before=${3:-} s t sc tc
+            local ref=$1 forced=${2:-false} before=${3:-} created=${4:-true} s t sc tc
             s=$(tip "$SRC" "$ref"); t=$(tip "$DST" "$ref")
             [ -z "$s" ] && { echo "$ref no longer exists here"; return 0; }
             [ "$s" = "$t" ] && { echo "$ref already in sync"; return 0; }
             git fetch -q --no-tags "$SRC" "+$ref:refs/m/src"
+            if [ -z "$t" ] && [ "$created" != true ]; then
+              # an update of an existing ref that the twin no longer has: it was deleted there meanwhile,
+              # do not resurrect it (the twin's delete run removes it here)
+              echo "$ref is absent on twin, not recreating it"; return 0
+            fi
             if [ -z "$t" ]; then
               git push -q --force-with-lease="$ref:" "$DST" "refs/m/src:$ref"; echo "$ref created on twin"; return 0
             fi
@@ -78,7 +84,7 @@ jobs:
             delete)
               if [ "$REF_TYPE" = tag ]; then delete_ref "refs/tags/$SHORT_REF"; else delete_ref "refs/heads/$SHORT_REF"; fi ;;
             push)
-              if [ "$DELETED" = true ]; then delete_ref "$GITHUB_REF"; else sync_ref "$GITHUB_REF" "$FORCED" "$BEFORE"; fi ;;
+              if [ "$DELETED" = true ]; then delete_ref "$GITHUB_REF"; else sync_ref "$GITHUB_REF" "$FORCED" "$BEFORE" "$CREATED"; fi ;;
             *)
               rc=0
               for ref in $(git ls-remote --heads --tags "$SRC" | awk '$2 !~ /\^\{\}$/ {print $2}'); do sync_ref "$ref" || rc=1; done
